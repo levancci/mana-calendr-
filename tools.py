@@ -1,12 +1,8 @@
 import datetime
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
-from google.adk.tools import tool
 from config import GHANA_HOLIDAYS
 # Import your existing calendar_tools wrapper
-# Assuming calendar_tools.py is in the same directory and has insert_calendar_event
-# You might need to adapt insert_calendar_event slightly to not rely on global 'service' 
-# if you want to be purely stateless, but for now we wrap it.
 from calendar_tools import insert_calendar_event as raw_insert_event
 
 def get_next_weekday(start_date, weekday_name):
@@ -36,40 +32,40 @@ def calculate_exdates(start_datetime_obj, end_date_obj):
         current += datetime.timedelta(weeks=1)
     return exdates
 
-@tool
+# The ADK uses the function name 'schedule_recurring_class' as the tool name.
+# The docstring below acts as the tool description for the AI.
 def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, end_time: str, description: str) -> str:
     """
-    Schedules a recurring class for the next 3 months, automatically skipping Ghanaian holidays.
+    Schedules a recurring academic class for the next 3 months, automatically handling specific dates and skipping Ghanaian holidays.
     
     Args:
-        summary: Title of the class (e.g., "CSM 101").
-        day_of_week: Day it occurs (e.g., "Monday").
-        start_time: Start time in HH:MM (24h).
-        end_time: End time in HH:MM (24h).
-        description: Extra details.
+        summary (str): Title of the class (e.g., "CSM 101").
+        day_of_week (str): Day it occurs (e.g., "Monday").
+        start_time (str): Start time in HH:MM (24h format).
+        end_time (str): End time in HH:MM (24h format).
+        description (str): Extra details like lecturer or venue.
+        
+    Returns:
+        str: A success or error message.
     """
     try:
         today = datetime.datetime.now()
         semester_end = today + relativedelta(months=3)
         recurrence_until = semester_end.strftime("%Y%m%dT235959Z")
 
-        # Parse times
         sh, sm = map(int, start_time.split(':')[:2])
         eh, em = map(int, end_time.split(':')[:2])
 
-        # Calculate actual start date
         first_date = get_next_weekday(today, day_of_week)
         start_dt = first_date.replace(hour=sh, minute=sm, second=0, microsecond=0)
         end_dt = first_date.replace(hour=eh, minute=em, second=0, microsecond=0)
 
-        # Calculate exceptions
         exception_dates = calculate_exdates(start_dt, semester_end.date())
         
         recurrence_rule = [f"RRULE:FREQ=WEEKLY;UNTIL={recurrence_until}"]
         if exception_dates:
             recurrence_rule.append("EXDATE;TZID=GMT:" + ",".join(exception_dates))
 
-        # Call the underlying Google Calendar API
         raw_insert_event(
             calendar_id='primary',
             summary=summary,
@@ -81,3 +77,6 @@ def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, en
         return f"Success: Scheduled {summary} on {day_of_week}s at {start_time}."
     except Exception as e:
         return f"Error scheduling {summary}: {str(e)}"
+
+# Export for the agent
+schedule_tool = schedule_recurring_class

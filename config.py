@@ -1,15 +1,15 @@
 import os
 from dotenv import load_dotenv
-from google.genai import types
 
 load_dotenv()
 
-# Configuration Constants
+# Configuration
+# Ensure you have Google Cloud authentication set up (gcloud auth application-default login)
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
-MODEL_NAME = "gemini-1.5-flash-preview-0514" 
+MODEL_NAME = "gemini-2.5-flash"
 
-# Ghanaian Holidays (MM-DD) for 2025-2026 academic year
+# Ghanaian Holidays (MM-DD)
 GHANA_HOLIDAYS = [
     "12-05", # Farmer's Day
     "12-25", # Christmas Day

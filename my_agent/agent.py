@@ -3,7 +3,7 @@ from google.adk.models import Gemini
 from config import MODEL_NAME
 from tools import schedule_tool
 
-# Initialize the Model using the Gemini class wrapper provided by ADK
+# Initialize Gemini Model
 model = Gemini(model=MODEL_NAME)
 
 # Define the Agent
