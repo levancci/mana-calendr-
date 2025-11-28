@@ -7,24 +7,16 @@ API_NAME = 'calendar'
 API_VERSION = 'v3'
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-# --- CHANGED: Removed global 'service' variable ---
-
 def construct_google_calendar_client(client_secret):
     return create_service(client_secret, API_NAME, API_VERSION, SCOPES)
 
+# Lazy loader
 def get_service():
-    """
-    Lazy loader for the service. 
-    Only connects to Google when a tool actually needs it.
-    """
     return construct_google_calendar_client(CLIENT_SECRET_FILE)
 
 def create_calendar_list(calendar_name):
-    # Get service ONLY when this function is called
-    service = get_service() 
-    calendar_list = {
-        'summary': calendar_name
-    }
+    service = get_service()
+    calendar_list = {'summary': calendar_name}
     created_calendar = service.calendars().insert(body=calendar_list).execute()
     return created_calendar
 
@@ -97,3 +89,17 @@ def insert_calendar_event(calendar_id, **kwargs):
     ).execute()
 
     return event
+
+# --- NEW UNDO FUNCTION ---
+def delete_calendar_event(calendar_id, event_id):
+    """Deletes an event by ID."""
+    service = get_service()
+    try:
+        service.events().delete(
+            calendarId=calendar_id, 
+            eventId=event_id
+        ).execute()
+        return True
+    except Exception as e:
+        print(f"Error deleting event {event_id}: {e}")
+        return False

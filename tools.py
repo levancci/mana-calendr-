@@ -1,12 +1,12 @@
 import datetime
+import streamlit as st
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 from config import GHANA_HOLIDAYS
-# Import your existing calendar_tools wrapper
 from calendar_tools import insert_calendar_event as raw_insert_event
 
+# ... (Helper functions get_next_weekday and calculate_exdates remain exactly the same) ...
 def get_next_weekday(start_date, weekday_name):
-    """Finds the date of the next specific weekday."""
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     weekday_name = weekday_name.capitalize()
     try:
@@ -22,7 +22,6 @@ def get_next_weekday(start_date, weekday_name):
     return start_date + timedelta(days=days_ahead)
 
 def calculate_exdates(start_datetime_obj, end_date_obj):
-    """Generates EXDATE strings for holidays."""
     exdates = []
     current = start_datetime_obj
     while current.date() <= end_date_obj:
@@ -32,11 +31,9 @@ def calculate_exdates(start_datetime_obj, end_date_obj):
         current += datetime.timedelta(weeks=1)
     return exdates
 
-# The ADK uses the function name 'schedule_recurring_class' as the tool name.
-# The docstring below acts as the tool description for the AI.
 def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, end_time: str, description: str) -> str:
     """
-    Schedules a recurring academic class for the next 3 months, automatically handling specific dates and skipping Ghanaian holidays.
+    Schedules a recurring academic class for the next 3 months, skipping Ghanaian holidays.
     
     Args:
         summary (str): Title of the class (e.g., "CSM 101").
@@ -44,9 +41,6 @@ def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, en
         start_time (str): Start time in HH:MM (24h format).
         end_time (str): End time in HH:MM (24h format).
         description (str): Extra details like lecturer or venue.
-        
-    Returns:
-        str: A success or error message.
     """
     try:
         today = datetime.datetime.now()
@@ -66,7 +60,8 @@ def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, en
         if exception_dates:
             recurrence_rule.append("EXDATE;TZID=GMT:" + ",".join(exception_dates))
 
-        raw_insert_event(
+        # Insert the event
+        event = raw_insert_event(
             calendar_id='primary',
             summary=summary,
             description=description,
@@ -74,9 +69,16 @@ def schedule_recurring_class(summary: str, day_of_week: str, start_time: str, en
             end={'dateTime': end_dt.isoformat(), 'timeZone': 'GMT'},
             recurrence=recurrence_rule
         )
-        return f"Success: Scheduled {summary} on {day_of_week}s at {start_time}."
+        
+        # Save ID to Session State for Undo
+        if "created_event_ids" not in st.session_state:
+            st.session_state.created_event_ids = []
+        
+        st.session_state.created_event_ids.append(event['id'])
+
+        return f"Success: Scheduled {summary} (ID: {event['id']})"
     except Exception as e:
         return f"Error scheduling {summary}: {str(e)}"
 
-# Export for the agent
+# FIX: Just export the function itself. DO NOT wrap it in FunctionTool()
 schedule_tool = schedule_recurring_class

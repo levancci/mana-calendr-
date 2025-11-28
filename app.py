@@ -1,30 +1,42 @@
 import streamlit as st
 import asyncio
-import nest_asyncio; nest_asyncio.apply() # Uncomment if you see event loop errors
+import nest_asyncio
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from my_agent.agent import timetable_agent
-from calendar_tools import construct_google_calendar_client
+from calendar_tools import construct_google_calendar_client, delete_calendar_event
 import os
 
-st.set_page_config(page_title="ADK Timetable Scheduler", layout="wide")
+# Apply nest_asyncio to fix "no current event loop" errors
+nest_asyncio.apply()
+
+st.set_page_config(page_title="Mana Calendr", layout="centered")
 
 def run_async(coro):
+    """Helper to run async code safely in Streamlit."""
     try:
         return asyncio.run(coro)
     except RuntimeError:
-        return asyncio.get_event_loop().run_until_complete(coro)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
 
-async def run_agent(agent_runner, user_text, session_id):
+# Helper function to run the agent
+async def run_agent_logic(runner, user_text, session_id):
     content = types.Content(role='user', parts=[types.Part(text=user_text)])
-    events = agent_runner.run_async(
-        user_id="streamlit_user", 
+    
+    # We must await the async generator
+    events = runner.run_async(
+        user_id="default_user", 
         session_id=session_id, 
         new_message=content
     )
+    
     final_text = ""
     async for event in events:
+        # Depending on ADK version, response structure might vary
+        # This handles standard text responses
         if hasattr(event, 'content') and event.content and event.content.parts:
              for part in event.content.parts:
                  if part.text:
@@ -32,67 +44,91 @@ async def run_agent(agent_runner, user_text, session_id):
     return final_text
 
 def main():
-    st.title("🇬🇭 Visual Timetable Scheduler (ADK Powered)")
-    st.markdown("Upload your timetable. Click **Schedule** to sync events to your Google Calendar.")
+    st.title("📅 Mana Calendr")
+    st.markdown("Upload your timetable and click **Schedule** to automatically sync classes to Google Calendar.")
 
-    # --- Session State ---
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = "session_001"
-        st.session_state.session_service = InMemorySessionService()
+    # --- Sidebar: Auth ---
+    with st.sidebar:
+        st.header("Status")
+        if os.path.exists('token files/token_calendar_v3.pickle'):
+            st.success("Calendar Connected ✅")
+        else:
+            st.warning("Not Connected ❌")
+            if st.button("Connect Google Calendar"):
+                try:
+                    construct_google_calendar_client('credentials.json')
+                    st.success("Authorized! Refresh page.")
+                except Exception as e:
+                    st.error(f"Auth Error: {e}")
+
+    # --- Session Setup ---
+    if "runner" not in st.session_state:
+        session_service = InMemorySessionService()
         st.session_state.runner = Runner(
             agent=timetable_agent,
-            app_name="timetable_app",
-            session_service=st.session_state.session_service
+            app_name="mana_calendr_app",
+            session_service=session_service
         )
-        run_async(st.session_state.session_service.create_session(
-            app_name="timetable_app", 
-            user_id="streamlit_user", 
-            session_id=st.session_state.session_id
+        run_async(session_service.create_session(
+            app_name="mana_calendr_app", 
+            user_id="default_user", 
+            session_id="session_1"
         ))
-        st.session_state.chat_history = []
-
-    # --- UI Layout ---
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        uploaded_file = st.file_uploader("Upload Timetable", type=["jpg", "png", "jpeg"])
     
-    # Simple Action Button (No chat input required for user)
-    if st.button("📅 Schedule Events", type="primary"):
-        if not uploaded_file:
-            st.error("Please upload an image first.")
-            return
+    # Initialize undo list if not present
+    if "created_event_ids" not in st.session_state:
+        st.session_state.created_event_ids = []
 
-        with st.spinner("Checking Authorization & Analyzing..."):
-            # 1. Check Authorization ON CLICK
-            if not os.path.exists('token files/token_calendar_v3.pickle'):
-                st.warning("Google Calendar authorization required. A browser window will open...")
+    # --- Simplified UI (No Chat Bar) ---
+    uploaded_file = st.file_uploader("1. Upload Timetable Image", type=["jpg", "png", "jpeg"])
+
+    if uploaded_file:
+        st.image(uploaded_file, caption="Timetable Preview", width=400)
+        
+        # One-Click Action Button
+        if st.button("✨ Schedule My Semester", type="primary"):
+            with st.spinner("Analyzing image and creating events..."):
                 try:
-                    # This will trigger the browser popup flow
-                    construct_google_calendar_client('credentials.json')
-                    st.success("Authorized! Proceeding with scheduling...")
+                    prompt = "Analyze this timetable image. Extract all recurring classes and schedule them for the current semester, skipping holidays."
+                    
+                    # Run the agent
+                    response_text = run_async(run_agent_logic(
+                        st.session_state.runner, 
+                        prompt, 
+                        "session_1"
+                    ))
+
+                    st.success("Scheduling Complete!")
+                    st.markdown(f"**Agent Report:**\n\n{response_text}")
+                    
                 except Exception as e:
-                    st.error(f"Authorization failed: {e}")
-                    return
+                    error_msg = str(e)
+                    if "cannot reuse already awaited coroutine" in error_msg:
+                        st.warning("💡 Tip: You double-clicked! The scheduling likely finished. Check the output below or your calendar.")
+                    else:
+                        st.error(f"An error occurred: {e}")
+                        st.info("Check that you have authenticated with Google Cloud (`gcloud auth application-default login`).")
 
-            # 2. Run Agent
-            try:
-                # Prompt the agent to look at the image and schedule
-                user_instruction = "Analyze this timetable image and schedule all recurring classes for the semester."
+    # --- UNDO SECTION ---
+    # Only show if we have created events in this session
+    if st.session_state.created_event_ids:
+        st.markdown("---")
+        st.warning("⚠️ **Testing Mode:** Did something go wrong? You can undo the events created in this session.")
+        
+        if st.button("Undo Last Batch (Delete Events)"):
+            with st.spinner("Deleting events..."):
+                count = 0
+                # Iterate over a copy of the list
+                for event_id in st.session_state.created_event_ids[:]:
+                    success = delete_calendar_event('primary', event_id)
+                    if success:
+                        st.session_state.created_event_ids.remove(event_id)
+                        count += 1
                 
-                # Note: For real image support, ensure your ADK setup handles the file bytes.
-                # Here we assume the agent execution flow logic remains as previously set up.
-                response_text = run_async(run_agent(
-                    st.session_state.runner, 
-                    user_instruction, 
-                    st.session_state.session_id
-                ))
-
-                st.markdown("### Agent Response")
-                st.markdown(response_text)
-                st.session_state.chat_history.append({"role": "assistant", "content": response_text})
-
-            except Exception as e:
-                st.error(f"Agent Error: {e}")
+                if count > 0:
+                    st.success(f"Successfully deleted {count} events.")
+                else:
+                    st.info("No events found to delete (or they were already deleted).")
 
 if __name__ == "__main__":
     main()
