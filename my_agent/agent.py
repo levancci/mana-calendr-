@@ -1,18 +1,16 @@
-from google.adk.agents import Agent
+from google.adk.agents import LlmAgent
 from google.adk.models import Gemini
 from config import MODEL_NAME
-from tools import schedule_recurring_class
+from tools import schedule_tool
 
-# Initialize the Model
-# ADK's VertexAIModel handles the connection to Gemini
+# Initialize the Model using the Gemini class wrapper provided by ADK
 model = Gemini(model=MODEL_NAME)
 
 # Define the Agent
-# We use a simple Agent (which is an LlmAgent) as it perfectly fits the "Vision -> Tool" flow.
-timetable_agent = Agent(
+timetable_agent = LlmAgent(
     name="GhanaTimetableScheduler",
     model=model,
-    tools=[schedule_recurring_class], # The agent can call this tool directly
+    tools=[schedule_tool], 
     instruction="""
     You are an expert academic scheduler assistant.
     
