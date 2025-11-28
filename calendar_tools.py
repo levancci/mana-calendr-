@@ -2,18 +2,26 @@ import json
 from Google_apis import create_service
 
 # Configuration
-CLIENT_SECRET_FILE = 'credentials.json' # Make sure you downloaded this from Google Cloud
+CLIENT_SECRET_FILE = 'credentials.json'
 API_NAME = 'calendar'
 API_VERSION = 'v3'
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+# --- CHANGED: Removed global 'service' variable ---
+
 def construct_google_calendar_client(client_secret):
     return create_service(client_secret, API_NAME, API_VERSION, SCOPES)
 
-# Initialize service globally for tools to use
-service = construct_google_calendar_client(CLIENT_SECRET_FILE)
+def get_service():
+    """
+    Lazy loader for the service. 
+    Only connects to Google when a tool actually needs it.
+    """
+    return construct_google_calendar_client(CLIENT_SECRET_FILE)
 
 def create_calendar_list(calendar_name):
+    # Get service ONLY when this function is called
+    service = get_service() 
     calendar_list = {
         'summary': calendar_name
     }
@@ -21,6 +29,7 @@ def create_calendar_list(calendar_name):
     return created_calendar
 
 def list_calendar_list(max_capacity=200):
+    service = get_service()
     if isinstance(max_capacity, str):
         max_capacity = int(max_capacity)
         
@@ -53,6 +62,7 @@ def list_calendar_list(max_capacity=200):
     return all_calendars_cleaned
 
 def list_calendar_events(calendar_id, max_capacity=20):
+    service = get_service()
     if isinstance(max_capacity, str):
         max_capacity = int(max_capacity)
 
@@ -78,8 +88,7 @@ def list_calendar_events(calendar_id, max_capacity=20):
     return all_events
 
 def insert_calendar_event(calendar_id, **kwargs):
-    # Convert kwargs to correct JSON format
-    # Example kwargs: summary="Meeting", start={'dateTime':...}, end={'dateTime':...}
+    service = get_service()
     request_body = kwargs
     
     event = service.events().insert(

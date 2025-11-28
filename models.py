@@ -7,5 +7,6 @@ class CalendarEvent(BaseModel):
     start_time: str = Field(description="Start time in HH:MM format (24-hour), e.g., '14:00'")
     end_time: str = Field(description="End time in HH:MM format (24-hour), e.g., '16:00'")
     description: str = Field(description="Lecturer, location, or group info")
+    
 class SchedulePlan(BaseModel):
     events: List[CalendarEvent] = Field(description="List of events to be scheduled")
